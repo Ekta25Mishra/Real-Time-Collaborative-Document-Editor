@@ -7,79 +7,58 @@ const socket = io("http://localhost:5000");
 
 export default function Editor() {
   const { id } = useParams();
-
+  const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [title, setTitle] = useState(""); // ✅ Only here
 
   useEffect(() => {
-    const fetchDoc = async () => {
-      try {
-        const res = await API.get(`/documents/${id}`);
-        setContent(res.data.content || "");
-        setTitle(res.data.title || ""); // ✅ set title properly
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    fetchDoc();
-
     socket.emit("join-document", id);
+  }, [id]);
 
-    socket.on("receive-changes", (newContent) =>
-      setContent(newContent)
-    );
+  useEffect(() => {
+    const fetchDocument = async () => {
+      const res = await API.get(`/documents/${id}`);
+      setTitle(res.data.title);
+      setContent(res.data.content);
+    };
+    fetchDocument();
+  }, [id]);
+
+  useEffect(() => {
+    socket.on("receive-changes", ({ title, content }) => {
+      setTitle(title);
+      setContent(content);
+    });
 
     return () => {
       socket.off("receive-changes");
     };
-  }, [id]);
+  }, []);
 
-  const handleChange = (e) => {
-    const value = e.target.value;
-    setContent(value);
-    socket.emit("send-changes", { docId: id, content: value });
+  const saveDocument = async () => {
+    await API.put(`/documents/${id}`, { title, content });
+    socket.emit("send-changes", { docId: id, title, content });
   };
 
-  // Autosave
-  useEffect(() => {
-    const interval = setInterval(() => {
-      socket.emit("save-document", {
-        docId: id,
-        content,
-        title,
-      });
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [content, title, id]);
-
   return (
-    <div className="flex items-center justify-center p-10 bg-gray-100 min-h-screen">
-      <div className="bg-white w-full max-w-4xl rounded-xl shadow-lg p-6 flex flex-col gap-4">
-        <h2 className="text-xl font-bold text-gray-800 text-center">
-          Collaborative Document Editor
-        </h2>
-
+    <div className="editor-container">
+      <div className="editor-header">
         <input
-          type="text"
+          className="editor-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Document Title"
-          className="w-full p-2 text-xl font-semibold mb-4 border rounded"
+          placeholder="Untitled Document"
         />
-
-        <textarea
-          value={content}
-          onChange={handleChange}
-          rows={20}
-          className="w-full p-4 border border-gray-300 rounded-lg resize-y bg-gray-50 text-gray-800 text-base"
-        />
-
-        <p className="text-right text-gray-500 text-sm">
-          Autosave every 3 seconds
-        </p>
+        <button className="save-btn" onClick={saveDocument}>
+          Save
+        </button>
       </div>
+
+      <textarea
+        className="editor-textarea"
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        placeholder="Start typing your document here..."
+      />
     </div>
   );
 }

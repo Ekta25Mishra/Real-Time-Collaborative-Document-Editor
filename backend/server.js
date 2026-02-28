@@ -1,50 +1,44 @@
+require("dotenv").config();
 const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
-const cors = require("cors");
-require("dotenv").config();
 
-const connectDb = require("./config/db");
-
-// Connect Database
-connectDb();
+const authRoutes = require("./routes/authRoutes");
+const documentRoutes = require("./routes/documentRoutes");
 
 const app = express();
-const server = http.createServer(app); // IMPORTANT
+const server = http.createServer(app);
 
-// Middleware
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-    credentials: true,
-  })
-);
-
+app.use(cors());
 app.use(express.json());
 
-// Routes
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/documents", require("./routes/documentRoutes"));
+mongoose.connect(process.env.MONGODB_URL)
+  .then(() => console.log("MongoDB Connected"))
+  .catch(err => console.log(err));
 
-// Socket.io setup
+app.use("/api/auth", authRoutes);
+app.use("/api/documents", documentRoutes);
+
+// 🔥 SOCKET SETUP
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
-  },
+    methods: ["GET", "POST"]
+  }
 });
 
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  socket.on("join-document", (docId) => {
+    socket.join(docId);
+  });
 
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+  socket.on("send-changes", ({ docId, title, content }) => {
+    socket.to(docId).emit("receive-changes", { title, content });
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 5000;
-
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(5000, () => {
+  console.log("Server running on port 5000");
 });
